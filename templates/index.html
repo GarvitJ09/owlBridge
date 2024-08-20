@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Speech Translation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>Real-time Speech Translation</h1>
+    
+    <label for="to_lang">Target Language (e.g., 'es' for Spanish):</label>
+    <input type="text" id="to_lang" required><br><br>
+    
+    <button id="startButton">Start Translation</button>
+    <button id="stopButton" disabled>Stop Translation</button>
+    
+    <div id="output"></div>
+    
+    <script>
+        const socket = io();
+        let recognition;
+
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const output = document.getElementById('output');
+        const toLang = document.getElementById('to_lang');
+
+        startButton.addEventListener('click', startTranslation);
+        stopButton.addEventListener('click', stopTranslation);
+
+        function startTranslation() {
+            if (!('webkitSpeechRecognition' in window)) {
+                alert('Web Speech API is not supported in this browser');
+                return;
+            }
+
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onresult = (event) => {
+                const result = event.results[event.results.length - 1];
+                if (result.isFinal) {
+                    const text = result[0].transcript;
+                    socket.emit('translate_chunk', { text, to_lang: toLang.value });
+                }
+            };
+
+            recognition.start();
+            startButton.disabled = true;
+            stopButton.disabled = false;
+        }
+
+        function stopTranslation() {
+            if (recognition) {
+                recognition.stop();
+            }
+            startButton.disabled = false;
+            stopButton.disabled = true;
+        }
+
+        socket.on('translation_response', (data) => {
+            const audio = new Audio('data:audio/mp3;base64,' + data.audio_data);
+            audio.play();
+            output.innerHTML += `<p>${data.translated_text}</p>`;
+        });
+
+        socket.on('translation_error', (data) => {
+            console.error(data.error);
+            output.innerHTML += `<p style="color: red;">Error: ${data.error}</p>`;
+        });
+    </script>
+</body>
+</html>
